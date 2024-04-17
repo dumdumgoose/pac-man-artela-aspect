@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cellula - AW-PACMAN</title>
+    <style>
+        .map-container {
+            position: relative;
+            width: 450px; /* 9 cells * 50px each */
+            height: 450px; /* 9 cells * 50px each */
+        }
+
+        .cell {
+            width: 50px;
+            height: 50px;
+            box-sizing: border-box;
+            float: left;
+            border: 1px solid #ddd;
+        }
+
+        .wall {
+            background-color: #333;
+        }
+
+        .mover {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-image: url("https://img.cellula.life/rankback/pc/user-b.png");
+            background-size: 100% 100%;
+            transition: transform 0.5s ease;
+            transform: translate(350px, 350px);
+        }
+
+        .mover.second {
+            background-image: url("https://img.cellula.life/rankback/pc/3-DOWN.png");
+            transform: translate(50px, 350px);
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@artela/web3"></script>
+</head>
+<body>
+
+<script>
+    const projectConfig = {
+        node: 'https://betanet-rpc1.artela.network',
+    };
+</script>
+
+<h1>Cellula - AW-PACMAN</h1>
+<div>
+    Aspect Address: <input value="0xEb882A09508c765904784331780BA9Cd49cac4db" type="text" id="aspect" /><br>
+    Private Key (WARNING: Do not use in production!): <input value="c91a4898b1717abf30679b1d79a7bd4c3e9ff9a48e41edc8faebf9554eac071b" type="text" id="privateKey" /><br>
+    This address is provided solely for the purpose of facilitating product testing and experience. Please refrain from making any unauthorized operations. Thank you for your cooperation.<br/>
+    <button id="executeButton">Execute</button><br>
+    Round: <span id="countdown-display">50</span>
+    <div class="map-container" id="map-container">
+        <!-- The map will be programmatically populated with cells here -->
+        <div id="mover1" class="mover"></div>
+        <div id="mover2" class="mover second"></div>
+    </div>
+</div>
+
+<script type="module">
+    document.getElementById('executeButton').addEventListener('click', async () => {
+        await op()
+    });
+    function splitPoints(inputStr) {
+        // Step 1: Split the input string into two parts using "---------" as the separator.
+        const parts = inputStr.split('---------').map(part => part.trim());
+
+        // Step 2: Initialize arrays to hold the points for each part.
+        let arr1 = [];
+        let arr2 = [];
+
+        // Step 3: Iterate over each part to extract the points.
+        parts.forEach((part, index) => {
+            // Split the part into point strings, trimming the whitespace and trailing comma if present.
+            const pointStrings = part.split('},').map(s => s.trim().replace('}', ''));
+
+            // Extract the coordinates from each point string.
+            pointStrings.forEach(pointString => {
+                // Match the x and y values within the string.
+                const matches = pointString.match(/x: (\d+), y: (\d+)/);
+                if (matches && matches.length === 3) {
+                    // Parse the x and y values.
+                    const x = parseInt(matches[1], 10);
+                    const y = parseInt(matches[2], 10);
+
+                    // Depending on the index, push the point to the appropriate array.
+                    if (index === 0) {
+                        arr1.push([y, x]);
+                    } else {
+                        arr2.push([y, x]);
+                    }
+                }
+            });
+        });
+
+        // Return the arrays containing the points.
+        return [arr1, arr2];
+    }
+    export async function op() {
+        const aspectAddress = document.getElementById('aspect').value;
+        const operation = '0002'
+        const parameter = 'haha'
+        const senderPriKey = document.getElementById('privateKey').value;
+        const web3 = new Web3(projectConfig.node);
+        const gasPrice = await web3.eth.getGasPrice();
+        const account = web3.eth.accounts.privateKeyToAccount(senderPriKey.trim());
+        web3.eth.accounts.wallet.add(account.privateKey);
+
+        const aspect = new web3.atl.Aspect(aspectAddress);
+
+        // init op
+        let op = operation;
+        let params = parameter;
+
+        // concat param and op
+        let callData = '0x' + (params.startsWith('0x') ? op + params.substring(2) : op + stringToHex(params));
+
+        console.log("op: ", op);
+        console.log("params: ", params);
+
+        let aspectCore = web3.atl.aspectCore();
+
+        if (1==1) {
+            console.log(`op call start with callData: ${callData} to aspect: ${aspectAddress}`);
+            let result = await aspectCore.methods.entrypoint(
+                aspectAddress,
+                callData
+            ).call();
+            console.log('op call finished')
+            console.log(hexToString(result));
+            const [arr1, arr2] = splitPoints(hexToString(result));
+            moveDiv(mover1, arr1);
+            moveDiv(mover2, arr2);
+        } else {
+            const nonce = await web3.eth.getTransactionCount(account.address);
+            let encodedData = aspect.operation(callData).encodeABI();
+
+            tx = {
+                from: account.address,
+                nonce: nonce,
+                gasPrice,
+                gas: 8000000,
+                data: encodedData,
+                to: aspectCore.options.address,
+            }
+
+            const signedTx = await web3.eth.accounts.signTransaction(tx, account.privateKey);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            console.log('op tx finished')
+            console.log(receipt);
+        }
+
+        function stringToHex(str) {
+            let val = "";
+            for (let i = 0; i < str.length; i++) {
+                val += str.charCodeAt(i).toString(16);
+            }
+            return val;
+        }
+
+        function hexToString(hex) {
+            let val = "";
+            for (let i = 0; i < hex.length; i += 2) {
+                val += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+            }
+            return val;
+        }
+    }
+
+    const mapContainer = document.getElementById('map-container');
+    const mover1 = document.getElementById('mover1');
+    const mover2 = document.getElementById('mover2');
+
+    // Function to draw the map
+    function drawMap(map) {
+        map.forEach(row => {
+            row.forEach(cell => {
+                const cellDiv = document.createElement('div');
+                cellDiv.classList.add('cell');
+                if (cell === 1) {
+                    cellDiv.classList.add('wall');
+                }
+                mapContainer.appendChild(cellDiv);
+            });
+        });
+    }
+
+    // Function to move the divs
+    function moveDiv(mover, steps) {
+        let i = 0;
+        let countdown = steps.length;
+        function updateCountdownDisplay() {
+            document.getElementById('countdown-display').textContent = countdown.toString();
+        }
+
+        function nextMove() {
+            if (i < steps.length) {
+                const [x, y] = steps[i];
+                mover.style.transform = `translate(${x * 50}px, ${y * 50}px)`;
+                i++;
+                countdown--;
+                updateCountdownDisplay();
+                setTimeout(nextMove, 1000); // Wait 1 second between moves
+            }
+        }
+        updateCountdownDisplay();
+        nextMove();
+    }
+    const map = [
+        [1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 1, 0, 0, 0, 1, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 1, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 1, 0, 0, 0, 1, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ];
+    // Draw the map on the page
+    drawMap(map);
+</script>
+</body>
+</html>
